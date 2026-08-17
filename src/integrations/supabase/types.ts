@@ -131,6 +131,27 @@ export type Database = {
         }
         Relationships: []
       }
+      premios_config: {
+        Row: {
+          atualizado_em: string
+          nome_visivel: string
+          tier: string
+          tipo_item: string
+        }
+        Insert: {
+          atualizado_em?: string
+          nome_visivel: string
+          tier: string
+          tipo_item: string
+        }
+        Update: {
+          atualizado_em?: string
+          nome_visivel?: string
+          tier?: string
+          tipo_item?: string
+        }
+        Relationships: []
+      }
       stock_premios: {
         Row: {
           custo_moedas_almara: number
