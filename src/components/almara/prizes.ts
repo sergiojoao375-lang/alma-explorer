@@ -9,7 +9,15 @@ export interface Prize {
   tier: "Bronze" | "Prata" | "Ouro";
   bg: string;
   requirement: string;
+  /** Nº de perguntas da prova final deste prémio. */
+  perguntas: number;
 }
+
+/** Segundos disponíveis para responder a cada pergunta da prova de prémio. */
+export const SEGUNDOS_POR_PERGUNTA = 20;
+
+/** Intervalo obrigatório entre tentativas de prova de prémio (4 horas). */
+export const COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 export const PRIZES: Prize[] = [
   {
@@ -21,6 +29,7 @@ export const PRIZES: Prize[] = [
     tier: "Bronze",
     bg: "bg-gradient-to-br from-amber-500 to-orange-700",
     requirement: "Ofensiva de 3 dias",
+    perguntas: 10,
   },
   {
     id: "prata",
@@ -31,6 +40,7 @@ export const PRIZES: Prize[] = [
     tier: "Prata",
     bg: "bg-gradient-to-br from-slate-400 to-slate-600",
     requirement: "9 lições concluídas + 230 XP",
+    perguntas: 15,
   },
   {
     id: "ouro",
@@ -41,6 +51,7 @@ export const PRIZES: Prize[] = [
     tier: "Ouro",
     bg: "bg-gradient-to-br from-yellow-400 to-amber-600",
     requirement: "Ofensiva de 30 dias ou ano lectivo completo",
+    perguntas: 20,
   },
 ];
 
@@ -102,4 +113,45 @@ export function generateRedemption(prize: Prize): Redemption {
 /** String completa codificada no QR Code. */
 export function qrPayload(r: Redemption): string {
   return `${getDeviceId()}|${r.code}|${r.expiresAt.slice(0, 10)}|${checksum(r.code + SECRET)}`;
+}
+
+/** ---------- TRAVA DE OPORTUNIDADE (4 horas entre tentativas) ---------- */
+const COOLDOWN_KEY = "almara:prize-cooldown";
+
+type CooldownMap = Record<string, number>;
+
+function lerCooldowns(): CooldownMap {
+  try {
+    return JSON.parse(localStorage.getItem(COOLDOWN_KEY) ?? "{}") as CooldownMap;
+  } catch {
+    return {};
+  }
+}
+
+/** Regista o momento da tentativa falhada de um prémio. */
+export function registarTentativa(prizeId: string): void {
+  try {
+    const mapa = lerCooldowns();
+    mapa[prizeId] = Date.now();
+    localStorage.setItem(COOLDOWN_KEY, JSON.stringify(mapa));
+  } catch {
+    // offline-first: sem localStorage o aluno não fica bloqueado
+  }
+}
+
+/** Milissegundos que faltam até poder tentar de novo (0 = livre). */
+export function tempoRestanteCooldown(prizeId: string): number {
+  const ultimo = lerCooldowns()[prizeId];
+  if (!ultimo) return 0;
+  return Math.max(0, ultimo + COOLDOWN_MS - Date.now());
+}
+
+/** Formata o tempo restante como "03h:59m" ou "04m:12s" no último minuto. */
+export function formatarCooldown(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${String(h).padStart(2, "0")}h:${String(m).padStart(2, "0")}m`;
+  return `${String(m).padStart(2, "0")}m:${String(s).padStart(2, "0")}s`;
 }
