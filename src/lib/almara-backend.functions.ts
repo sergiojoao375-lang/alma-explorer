@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { ITENS_DISPONIVEIS, TAXA_RETENCAO_SOFTWARE } from "./almara-premios";
 
 export type Supermercado = {
   id: string;
@@ -63,20 +64,7 @@ export type PremioConfig = {
   nome_visivel: string;
 };
 
-/** Catálogo de itens físicos que podem ser atribuídos aos prémios. */
-export const ITENS_DISPONIVEIS = [
-  "Kit_Bronze",
-  "Caderno_Linhas",
-  "Mochila",
-  "Lapis_de_Cor",
-  "Livro_Escolar",
-  "Compasso",
-  "Caderno_Desenho",
-  "Livro_Colorir",
-] as const;
 
-/** Percentagem retida pela Almara para custos e lucro do software. */
-export const TAXA_RETENCAO_SOFTWARE = 0.15;
 
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
