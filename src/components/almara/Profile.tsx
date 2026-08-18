@@ -1,4 +1,5 @@
-import { ArrowLeft, Flame, Trophy, Target, Clock, Award, Lock, Zap, Star, BookOpen, Coins, Shield } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Flame, Trophy, Target, Clock, Award, Lock, Zap, Star, BookOpen, Coins, Shield, Info, HeartHandshake, Gamepad2, Timer } from "lucide-react";
 import type { AppState } from "./types";
 
 const ACHIEVEMENTS = [
@@ -11,6 +12,7 @@ const ACHIEVEMENTS = [
 ];
 
 export function Profile({ state, onBack }: { state: AppState; onBack: () => void }) {
+  const [sobre, setSobre] = useState(false);
   const initials = state.name
     .split(" ")
     .map((s) => s[0])
@@ -29,6 +31,12 @@ export function Profile({ state, onBack }: { state: AppState; onBack: () => void
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="font-display text-lg font-extrabold text-foreground">Perfil</h1>
+        <button
+          onClick={() => setSobre(true)}
+          className="btn-press ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Info className="h-3.5 w-3.5" /> Sobre
+        </button>
       </header>
 
       <div className="relative overflow-hidden px-5 pt-6">
@@ -103,7 +111,104 @@ export function Profile({ state, onBack }: { state: AppState; onBack: () => void
           })}
         </div>
       </div>
+
+      {sobre && <SobreAlmara onClose={() => setSobre(false)} />}
     </div>
+  );
+}
+
+function SobreAlmara({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="animate-fade-in fixed inset-0 z-50 overflow-y-auto bg-background">
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border/60 bg-background/90 px-4 py-3 backdrop-blur">
+        <button
+          onClick={onClose}
+          className="btn-press grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground"
+          aria-label="Fechar"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h2 className="font-display text-lg font-extrabold text-foreground">Sobre o Almara</h2>
+      </header>
+
+      <div className="mx-auto max-w-md px-5 pb-16 pt-6">
+        <div className="rounded-3xl bg-brand-soft p-5">
+          <HeartHandshake className="h-7 w-7 text-primary" />
+          <h3 className="mt-3 font-display text-xl font-extrabold text-foreground">
+            Estudar hoje, material escolar amanhã
+          </h3>
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">
+            O Almara é um app angolano que transforma o esforço de estudo em material escolar real.
+            Marcas e empresas patrocinam o fundo escolar; os alunos ganham lápis, cadernos e mochilas
+            em supermercados parceiros — sem pagar nada.
+          </p>
+        </div>
+
+        <SobreBloco icon={<Gamepad2 className="h-5 w-5" />} titulo="Como jogar">
+          Escolhe uma disciplina, avança na trilha e responde aos quizzes de cada tópico. Cada nível
+          (Básico, Intermédio e Avançado) tem no mínimo 12 perguntas ligadas à realidade angolana.
+          Erraste? A explicação aparece logo a seguir e a pergunta volta na sessão «Rever Erros».
+        </SobreBloco>
+
+        <SobreBloco icon={<Coins className="h-5 w-5" />} titulo="Moedas e vidas">
+          Cada lição concluída dá 10 moedas e pontos de experiência (XP). As moedas gastam-se na
+          Loja: 50 moedas repõem as vidas e 100 moedas compram o Escudo, que protege a tua ofensiva
+          num dia em que não consegues estudar. As moedas são virtuais — nunca se compram com
+          dinheiro.
+        </SobreBloco>
+
+        <SobreBloco icon={<Flame className="h-5 w-5" />} titulo="Ofensiva (foguinho)">
+          Estuda pelo menos uma lição por dia para manter a ofensiva. Se falhares um dia sem escudo,
+          a ofensiva volta a zero. É a ofensiva que desbloqueia o Kit Bronze.
+        </SobreBloco>
+
+        <SobreBloco icon={<Trophy className="h-5 w-5" />} titulo="Prémios e provas">
+          Ao cumprir os requisitos de cada kit fazes a prova final: 10 perguntas (Bronze), 15 (Prata)
+          e 20 (Ouro), com 20 segundos por pergunta. Precisas de mais de 80% de acerto. Se falhares,
+          só podes tentar de novo 4 horas depois. Ao passar recebes um QR Code único, válido 7 dias,
+          para levantar o material no supermercado parceiro.
+        </SobreBloco>
+
+        <SobreBloco icon={<Timer className="h-5 w-5" />} titulo="Funciona sem internet">
+          As lições ficam guardadas no teu telemóvel. Podes estudar offline; a app sincroniza as
+          estatísticas quando houver rede.
+        </SobreBloco>
+
+        <SobreBloco icon={<Info className="h-5 w-5" />} titulo="Propósito social">
+          Em Angola, muitas famílias não conseguem comprar material escolar. O Almara canaliza 85% de
+          cada patrocínio para material distribuído nas províncias; os restantes 15% cobrem os custos
+          e a manutenção da plataforma. Todo o percurso é auditável, para que as empresas parceiras
+          possam justificar o investimento social.
+        </SobreBloco>
+
+        <button
+          onClick={onClose}
+          className="btn-press mt-6 w-full rounded-2xl bg-primary py-4 font-display text-base font-extrabold text-primary-foreground"
+        >
+          Voltar ao perfil
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SobreBloco({
+  icon,
+  titulo,
+  children,
+}: {
+  icon: React.ReactNode;
+  titulo: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-4 rounded-2xl border-2 border-border bg-card p-4">
+      <div className="flex items-center gap-2">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-soft text-primary">{icon}</span>
+        <h4 className="font-display text-base font-extrabold text-foreground">{titulo}</h4>
+      </div>
+      <p className="mt-2 text-sm font-semibold leading-relaxed text-muted-foreground">{children}</p>
+    </section>
   );
 }
 
