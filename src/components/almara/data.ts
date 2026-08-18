@@ -24,6 +24,7 @@ import {
   GEO_POPULACAO,
   GEO_RECURSOS,
 } from "./data-extra";
+import { MIN_PERGUNTAS_POR_NIVEL, poolFor, SUBJECT_POOLS } from "./question-pools";
 
 type TopicSeed = Omit<Topic, "unlocked" | "completed">;
 
@@ -453,7 +454,16 @@ export function getMixedQuestions(grade: Grade, count = 5): QuizQuestion[] {
         if (arr) pool.push(...arr.map((q) => ({ ...q, id: q.id + subject.id.charCodeAt(0) * 1000 + topic.id * 100 })));
       }
     }
+    // Banco central da disciplina — garante volume suficiente para provas de 20 perguntas.
+    for (const arr of Object.values(SUBJECT_POOLS[subject.id] ?? {})) {
+      pool.push(...arr.map((q) => ({ ...q, id: q.id + subject.id.charCodeAt(0) * 100000 })));
+    }
   }
+  // Remove perguntas repetidas antes de sortear.
+  const vistas = new Set<string>();
+  const unicas = pool.filter((q) => (vistas.has(q.question) ? false : (vistas.add(q.question), true)));
+  pool.length = 0;
+  pool.push(...unicas);
   if (pool.length === 0) return FALLBACK_QUIZ;
   return [...pool].sort(() => Math.random() - 0.5).slice(0, count);
 }
