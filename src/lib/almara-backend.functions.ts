@@ -51,7 +51,32 @@ export type Metricas = {
   totalAlunos: number;
   mediaLicoes: number;
   faturamentoMarcas: number;
+  /** Alunos e média de lições agrupados por classe (6ª a 10ª). */
+  porClasse: { classe: string; alunos: number; mediaLicoes: number }[];
+  totalLicoes: number;
+  totalXp: number;
 };
+
+export type PremioConfig = {
+  tier: string;
+  tipo_item: string;
+  nome_visivel: string;
+};
+
+/** Catálogo de itens físicos que podem ser atribuídos aos prémios. */
+export const ITENS_DISPONIVEIS = [
+  "Kit_Bronze",
+  "Caderno_Linhas",
+  "Mochila",
+  "Lapis_de_Cor",
+  "Livro_Escolar",
+  "Compasso",
+  "Caderno_Desenho",
+  "Livro_Colorir",
+] as const;
+
+/** Percentagem retida pela Almara para custos e lucro do software. */
+export const TAXA_RETENCAO_SOFTWARE = 0.15;
 
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
@@ -90,25 +115,43 @@ export const getPainel = createServerFn({ method: "GET" }).handler(async () => {
       .order("data_registo", { ascending: false })
       .limit(12),
     supabaseAdmin.from("patrocinadores").select("*").order("created_at", { ascending: false }),
-    supabaseAdmin.from("alunos_estatisticas").select("licoes_concluidas"),
+    supabaseAdmin.from("alunos_estatisticas").select("licoes_concluidas, xp, classe"),
   ]);
   if (lojas.error) console.error("[almara] lojas", lojas.error);
   if (stock.error) console.error("[almara] stock", stock.error);
 
   const linhasAlunos = alunos.data ?? [];
   const patrocinadores = (marcas.data ?? []) as Patrocinador[];
+  const grupos = new Map<string, { alunos: number; licoes: number }>();
+  for (const l of linhasAlunos) {
+    const classe = (l.classe ?? "Sem classe") as string;
+    const g = grupos.get(classe) ?? { alunos: 0, licoes: 0 };
+    g.alunos += 1;
+    g.licoes += Number(l.licoes_concluidas);
+    grupos.set(classe, g);
+  }
+  const totalLicoes = linhasAlunos.reduce((a, l) => a + Number(l.licoes_concluidas), 0);
   const metricas: Metricas = {
     totalAlunos: linhasAlunos.length,
-    mediaLicoes:
-      linhasAlunos.length === 0
-        ? 0
-        : linhasAlunos.reduce((a, l) => a + Number(l.licoes_concluidas), 0) / linhasAlunos.length,
+    mediaLicoes: linhasAlunos.length === 0 ? 0 : totalLicoes / linhasAlunos.length,
     faturamentoMarcas: patrocinadores
       .filter((p) => p.ativo)
       .reduce((a, p) => a + Number(p.valor_patrocinio), 0),
+    porClasse: [...grupos.entries()]
+      .map(([classe, g]) => ({
+        classe,
+        alunos: g.alunos,
+        mediaLicoes: g.alunos === 0 ? 0 : g.licoes / g.alunos,
+      }))
+      .sort((a, b) => a.classe.localeCompare(b.classe)),
+    totalLicoes,
+    totalXp: linhasAlunos.reduce((a, l) => a + Number(l.xp ?? 0), 0),
   };
 
+  const premios = await supabaseAdmin.from("premios_config").select("*").order("tier");
+
   return {
+    premios: (premios.data ?? []) as PremioConfig[],
     lojas: (lojas.data ?? []) as Supermercado[],
     stock: (stock.data ?? []) as StockItem[],
     conta: (conta.data ?? null) as ContaCentral | null,
@@ -328,7 +371,7 @@ export const doacaoLocal = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Grande patrocínio: 10% retenção Almara, 90% fundo escolar. */
+/** Grande patrocínio: 15% retenção Almara (custos + lucro), 85% fundo escolar. */
 export const registarPatrocinio = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
@@ -349,8 +392,8 @@ export const registarPatrocinio = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!conta) throw new Error("Conta central indisponível");
 
-    const retencao = data.valor * 0.1;
-    const distribuicao = data.valor * 0.9;
+    const retencao = data.valor * TAXA_RETENCAO_SOFTWARE;
+    const distribuicao = data.valor * (1 - TAXA_RETENCAO_SOFTWARE);
 
     await supabaseAdmin
       .from("conta_central_almara")
@@ -418,11 +461,105 @@ export const injectarCredito = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-const ITEM_POR_TIER: Record<string, string> = {
+const ITEM_POR_TIER_PADRAO: Record<string, string> = {
   BRONZE: "Kit_Bronze",
   PRATA: "Caderno_Linhas",
   OURO: "Mochila",
 };
+
+/** Configuração semanal: que item físico corresponde a cada categoria de prémio. */
+export const getPremiosConfig = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin.from("premios_config").select("*").order("tier");
+  return (data ?? []) as PremioConfig[];
+});
+
+/** Administrador troca o item físico de uma categoria (rotatividade semanal). */
+export const definirItemPremio = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        pin: z.string().min(1),
+        tier: z.enum(["BRONZE", "PRATA", "OURO"]),
+        tipoItem: z.enum(ITENS_DISPONIVEIS),
+        nomeVisivel: z.string().min(1).max(80),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    await checkPin(data.pin);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("premios_config").upsert({
+      tier: data.tier,
+      tipo_item: data.tipoItem,
+      nome_visivel: data.nomeVisivel,
+      atualizado_em: new Date().toISOString(),
+    });
+    if (error) throw new Error(error.message);
+
+    // Garante que todas as filiais activas têm linha de stock para o novo item.
+    const { data: lojas } = await supabaseAdmin.from("supermercados").select("id");
+    const { data: existentes } = await supabaseAdmin
+      .from("stock_premios")
+      .select("supermercado_id")
+      .eq("tipo_item", data.tipoItem);
+    const jaTem = new Set((existentes ?? []).map((e) => e.supermercado_id));
+    const novas = (lojas ?? [])
+      .filter((l) => !jaTem.has(l.id))
+      .map((l) => ({
+        supermercado_id: l.id,
+        tipo_item: data.tipoItem,
+        quantidade_disponivel: 0,
+        custo_moedas_almara: 500,
+        valor_comercial_kz: 1000,
+      }));
+    if (novas.length > 0) await supabaseAdmin.from("stock_premios").insert(novas);
+    return { ok: true };
+  });
+
+/** Adiciona um novo tipo de item ao stock de uma filial. */
+export const adicionarItemStock = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        pin: z.string().min(1),
+        supermercadoId: z.string().uuid(),
+        tipoItem: z.enum(ITENS_DISPONIVEIS),
+        quantidade: z.number().int().min(0).max(100000),
+        valorComercialKz: z.number().min(0).max(10_000_000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    await checkPin(data.pin);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: existente } = await supabaseAdmin
+      .from("stock_premios")
+      .select("id, quantidade_disponivel")
+      .eq("supermercado_id", data.supermercadoId)
+      .eq("tipo_item", data.tipoItem)
+      .maybeSingle();
+    if (existente) {
+      const { error } = await supabaseAdmin
+        .from("stock_premios")
+        .update({
+          quantidade_disponivel: data.quantidade,
+          valor_comercial_kz: data.valorComercialKz,
+        })
+        .eq("id", existente.id);
+      if (error) throw new Error(error.message);
+      return { ok: true, criado: false };
+    }
+    const { error } = await supabaseAdmin.from("stock_premios").insert({
+      supermercado_id: data.supermercadoId,
+      tipo_item: data.tipoItem,
+      quantidade_disponivel: data.quantidade,
+      custo_moedas_almara: 500,
+      valor_comercial_kz: data.valorComercialKz,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true, criado: true };
+  });
 
 /** Balcão: valida o código, consome stock e debita o crédito da loja. */
 export const resgatarPremio = createServerFn({ method: "POST" })
@@ -437,12 +574,17 @@ export const resgatarPremio = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const partes = data.codigo.toUpperCase().split("-");
     const tier = partes[2] ?? "";
-    const tipoItem = ITEM_POR_TIER[tier];
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: config } = await supabaseAdmin
+      .from("premios_config")
+      .select("tipo_item")
+      .eq("tier", tier)
+      .maybeSingle();
+    const tipoItem = config?.tipo_item ?? ITEM_POR_TIER_PADRAO[tier];
     if (!tipoItem) {
       return { ok: false as const, motivo: "Código sem prémio reconhecido", tipoItem: null };
     }
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: lojaEstado } = await supabaseAdmin
       .from("supermercados")
       .select("ativo")
