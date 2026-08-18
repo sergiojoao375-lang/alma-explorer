@@ -426,9 +426,22 @@ export function getQuestions(
   const subject = SUBJECTS.find((s) => s.id === subjectId);
   const topic = subject?.topics.find((t) => t.id === topicId);
   const bank = topic?.questions;
-  if (!bank) return FALLBACK_QUIZ;
-  return bank[difficulty] ?? bank.Básico ?? bank.Intermédio ?? bank.Avançado ?? FALLBACK_QUIZ;
+  const base =
+    bank?.[difficulty] ?? bank?.Básico ?? bank?.Intermédio ?? bank?.Avançado ?? [];
+
+  // Completa sempre até ao mínimo de 12 perguntas com o banco central da disciplina.
+  const extra = poolFor(subjectId, difficulty);
+  const vistas = new Set(base.map((q) => q.question));
+  const completas = [...base];
+  for (const q of extra) {
+    if (completas.length >= MIN_PERGUNTAS_POR_NIVEL) break;
+    if (vistas.has(q.question)) continue;
+    vistas.add(q.question);
+    completas.push(q);
+  }
+  return completas.length > 0 ? completas : FALLBACK_QUIZ;
 }
+
 
 /** Prova final: perguntas mistas de todas as disciplinas disponíveis na classe do aluno. */
 export function getMixedQuestions(grade: Grade, count = 5): QuizQuestion[] {
