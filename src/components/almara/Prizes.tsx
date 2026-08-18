@@ -1,8 +1,21 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, Gift, Lock, PartyPopper, ShieldCheck, Trophy, X } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { ArrowLeft, Gift, Lock, PartyPopper, ShieldCheck, Timer, Trophy, X } from "lucide-react";
 import { getMixedQuestions } from "./data";
-import { PRIZES, generateRedemption, isPrizeUnlocked, prizeProgressLabel, qrPayload, type Prize } from "./prizes";
+import { getPremiosConfig } from "@/lib/almara-backend.functions";
+import {
+  PRIZES,
+  SEGUNDOS_POR_PERGUNTA,
+  formatarCooldown,
+  generateRedemption,
+  isPrizeUnlocked,
+  prizeProgressLabel,
+  qrPayload,
+  registarTentativa,
+  tempoRestanteCooldown,
+  type Prize,
+} from "./prizes";
 import type { AppState, QuizQuestion, Redemption } from "./types";
 
 export function Prizes({
@@ -16,6 +29,30 @@ export function Prizes({
 }) {
   const [challenge, setChallenge] = useState<Prize | null>(null);
   const [ticket, setTicket] = useState<Redemption | null>(null);
+  const [itens, setItens] = useState<Record<string, string>>({});
+  const [agora, setAgora] = useState(() => Date.now());
+  const carregarConfig = useServerFn(getPremiosConfig);
+
+  // Item físico atribuído a cada categoria esta semana (definido pelo administrador).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const config = await carregarConfig();
+        const mapa: Record<string, string> = {};
+        for (const c of config) mapa[c.tier] = c.nome_visivel;
+        setItens(mapa);
+      } catch {
+        // offline-first: mostra o item padrão
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Actualiza os contadores da trava de 4 horas.
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   if (ticket) {
     return <TicketScreen ticket={ticket} onBack={() => { setTicket(null); setChallenge(null); }} />;
@@ -26,7 +63,7 @@ export function Prizes({
       <FinalChallenge
         prize={challenge}
         state={state}
-        onCancel={() => setChallenge(null)}
+        onCancel={() => { setAgora(Date.now()); setChallenge(null); }}
         onPass={(prize) => {
           const r = generateRedemption(prize);
           onRedeem(r);
@@ -50,12 +87,19 @@ export function Prizes({
         <p className="text-sm font-semibold text-muted-foreground">
           Estuda, cumpre a missão e levanta material escolar real nos supermercados parceiros. 🎁
         </p>
+        <p className="mt-2 rounded-2xl bg-muted px-4 py-3 text-xs font-semibold text-muted-foreground">
+          Nas provas de prémio tens <strong>{SEGUNDOS_POR_PERGUNTA} segundos</strong> por pergunta e só
+          podes tentar <strong>uma vez a cada 4 horas</strong>.
+        </p>
       </div>
 
       <div className="mt-4 space-y-4 px-5">
         {PRIZES.map((p) => {
           const unlocked = isPrizeUnlocked(p, state);
-          const already = state.redemptions?.find((r) => r.prizeId === p.id && !r.used);
+          const already = state.redemptions?.find((r) => r.prizeId === p.id);
+          const restante = already ? 0 : tempoRestanteCooldown(p.id);
+          const emEspera = restante > 0;
+          void agora; // força recálculo a cada segundo
           return (
             <div
               key={p.id}
@@ -67,11 +111,13 @@ export function Prizes({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className={`font-display text-xl font-extrabold ${unlocked ? "text-white" : "text-muted-foreground"}`}>{p.name}</p>
-                  <p className={`truncate text-sm font-semibold ${unlocked ? "text-white/85" : "text-muted-foreground"}`}>{p.items}</p>
+                  <p className={`truncate text-sm font-semibold ${unlocked ? "text-white/85" : "text-muted-foreground"}`}>
+                    {itens[p.code] ?? p.items}
+                  </p>
                 </div>
               </div>
               <p className={`mt-3 text-[11px] font-bold uppercase tracking-wider ${unlocked ? "text-white/80" : "text-muted-foreground"}`}>
-                Patrocinado por {p.sponsor} · {p.requirement}
+                Patrocinado por {p.sponsor} · {p.requirement} · prova de {p.perguntas} perguntas
               </p>
               <p className={`mt-1 text-xs font-semibold ${unlocked ? "text-white/85" : "text-muted-foreground"}`}>
                 {prizeProgressLabel(p, state)}
@@ -86,13 +132,17 @@ export function Prizes({
                 </button>
               ) : (
                 <button
-                  disabled={!unlocked}
+                  disabled={!unlocked || emEspera}
                   onClick={() => setChallenge(p)}
                   className={`btn-press mt-4 w-full rounded-2xl py-3 font-display text-sm font-extrabold ${
-                    unlocked ? "bg-white text-foreground" : "cursor-not-allowed bg-background/70 text-muted-foreground"
+                    unlocked && !emEspera ? "bg-white text-foreground" : "cursor-not-allowed bg-background/70 text-muted-foreground"
                   }`}
                 >
-                  {unlocked ? "Resgatar Desafio do Patrocinador" : "Bloqueado"}
+                  {emEspera
+                    ? `Próxima tentativa disponível em ${formatarCooldown(restante)}`
+                    : unlocked
+                      ? "Resgatar Desafio do Patrocinador"
+                      : "Bloqueado"}
                 </button>
               )}
             </div>
@@ -114,17 +164,56 @@ function FinalChallenge({
   onCancel: () => void;
   onPass: (p: Prize) => void;
 }) {
-  const [questions] = useState<QuizQuestion[]>(() => getMixedQuestions(state.grade ?? "6ª", 5));
+  const [questions] = useState<QuizQuestion[]>(() =>
+    getMixedQuestions(state.grade ?? "6ª", prize.perguntas),
+  );
   const [i, setI] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
+  const [expirou, setExpirou] = useState(false);
   const [correct, setCorrect] = useState(0);
   const [done, setDone] = useState(false);
+  const [restante, setRestante] = useState(SEGUNDOS_POR_PERGUNTA);
+  const registado = useRef(false);
 
   const q = questions[i];
-  const pct = Math.round((correct / questions.length) * 100);
+  const pct = useMemo(
+    () => Math.round((correct / questions.length) * 100),
+    [correct, questions.length],
+  );
+
+  // Cronómetro regressivo de 20 segundos por pergunta.
+  useEffect(() => {
+    if (done || picked !== null || expirou) return;
+    setRestante(SEGUNDOS_POR_PERGUNTA);
+    const inicio = Date.now();
+    const t = setInterval(() => {
+      const passados = Math.floor((Date.now() - inicio) / 1000);
+      const falta = SEGUNDOS_POR_PERGUNTA - passados;
+      setRestante(falta);
+      if (falta <= 0) {
+        clearInterval(t);
+        setExpirou(true); // tempo esgotado → pergunta conta como errada
+      }
+    }, 250);
+    return () => clearInterval(t);
+  }, [i, done, picked, expirou]);
+
+  const avancar = () => {
+    if (i + 1 >= questions.length) setDone(true);
+    else {
+      setI(i + 1);
+      setPicked(null);
+      setExpirou(false);
+    }
+  };
 
   if (done) {
     const passed = pct > 80;
+    // Falhou → arranca a trava de 4 horas para este prémio.
+    if (!passed && !registado.current) {
+      registado.current = true;
+      registarTentativa(prize.id);
+    }
     return (
       <div className="min-h-screen bg-background px-6 py-16 text-center">
         <div className={`mx-auto grid h-24 w-24 place-items-center rounded-full ${passed ? "bg-emerald-100 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
@@ -134,7 +223,10 @@ function FinalChallenge({
           {passed ? "Parabéns, conseguiste!" : "Quase lá!"}
         </h2>
         <p className="mt-2 text-sm font-semibold text-muted-foreground">
-          Acertaste {correct} de {questions.length} ({pct}%). {passed ? "O teu prémio está desbloqueado." : "Precisas de mais de 80% para resgatar."}
+          Acertaste {correct} de {questions.length} ({pct}%).{" "}
+          {passed
+            ? "O teu prémio está desbloqueado."
+            : "Precisas de mais de 80% para resgatar. Podes tentar de novo daqui a 4 horas."}
         </p>
         <button
           onClick={() => (passed ? onPass(prize) : onCancel())}
@@ -146,6 +238,9 @@ function FinalChallenge({
     );
   }
 
+  const revelar = picked !== null || expirou;
+  const urgente = restante <= 5;
+
   return (
     <div className="min-h-screen bg-background pb-10">
       <header className="flex items-center gap-3 px-4 py-3">
@@ -153,10 +248,29 @@ function FinalChallenge({
           <X className="h-5 w-5" />
         </button>
         <div className="h-3 flex-1 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${((i + (picked !== null ? 1 : 0)) / questions.length) * 100}%` }} />
+          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${((i + (revelar ? 1 : 0)) / questions.length) * 100}%` }} />
         </div>
         <span className="font-display text-sm font-extrabold text-muted-foreground">{i + 1}/{questions.length}</span>
       </header>
+
+      {/* Cronómetro regressivo de 20 segundos */}
+      <div className="px-5">
+        <div className="flex items-center gap-3">
+          <span
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1 font-display text-sm font-extrabold ${
+              urgente && !revelar ? "bg-destructive text-white" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            <Timer className="h-4 w-4" /> {Math.max(0, restante)}s
+          </span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${urgente ? "bg-destructive" : "bg-emerald-500"}`}
+              style={{ width: `${(Math.max(0, restante) / SEGUNDOS_POR_PERGUNTA) * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="px-5 pt-4">
         <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Prova final · {prize.name}</p>
@@ -164,18 +278,17 @@ function FinalChallenge({
         <div className="mt-5 space-y-3">
           {q.options.map((opt, idx) => {
             const isPicked = picked === idx;
-            const reveal = picked !== null;
             const isRight = idx === q.answerIndex;
             return (
               <button
                 key={idx}
-                disabled={reveal}
+                disabled={revelar}
                 onClick={() => {
                   setPicked(idx);
                   if (isRight) setCorrect((c) => c + 1);
                 }}
                 className={`btn-press w-full rounded-2xl border-2 p-4 text-left font-semibold ${
-                  reveal && isRight
+                  revelar && isRight
                     ? "border-emerald-500 bg-emerald-50 text-emerald-800"
                     : isPicked
                       ? "border-destructive bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] text-destructive"
@@ -188,17 +301,16 @@ function FinalChallenge({
           })}
         </div>
 
-        {picked !== null && (
+        {revelar && (
           <div className="animate-fade-in mt-5 rounded-2xl border-2 border-border bg-card p-4">
+            {expirou && picked === null && (
+              <p className="mb-2 font-display text-sm font-extrabold text-destructive">
+                ⏰ Tempo esgotado — esta pergunta conta como errada.
+              </p>
+            )}
             <p className="text-sm font-semibold text-muted-foreground">{q.explain}</p>
             <button
-              onClick={() => {
-                if (i + 1 >= questions.length) setDone(true);
-                else {
-                  setI(i + 1);
-                  setPicked(null);
-                }
-              }}
+              onClick={avancar}
               className="btn-press mt-4 w-full rounded-2xl bg-primary py-3 font-display text-sm font-extrabold text-primary-foreground"
             >
               {i + 1 >= questions.length ? "Ver resultado" : "Continuar"}
