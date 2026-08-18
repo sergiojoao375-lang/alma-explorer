@@ -6,6 +6,7 @@ import {
   Banknote,
   Building2,
   Coins,
+  FileDown,
   GraduationCap,
   KeyRound,
   Loader2,
@@ -18,6 +19,7 @@ import {
   Search,
   ShieldOff,
   Store,
+  Trophy,
   Users,
   X,
 } from "lucide-react";
@@ -25,8 +27,10 @@ import {
   alterarPin,
   alternarFilial,
   alternarPatrocinador,
+  adicionarItemStock,
   atualizarStock,
   criarFilial,
+  definirItemPremio,
   criarPatrocinador,
   doacaoLocal,
   getPainel,
@@ -35,10 +39,13 @@ import {
   type ContaCentral,
   type Metricas,
   type Patrocinador,
+  type PremioConfig,
   type StockItem,
   type Supermercado,
   type Transacao,
 } from "@/lib/almara-backend.functions";
+import { ITENS_DISPONIVEIS, NOME_ITEM, TIERS, type ItemPremio } from "@/lib/almara-premios";
+import { gerarRelatorioImpacto } from "@/lib/relatorio-pdf";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -71,6 +78,7 @@ const DISCIPLINAS = [
 ];
 
 type Painel = {
+  premios: PremioConfig[];
   lojas: Supermercado[];
   stock: StockItem[];
   conta: ContaCentral | null;
@@ -266,7 +274,7 @@ function Conteudo({
   busy: boolean;
   run: (fn: () => Promise<unknown>, okText: string) => Promise<void>;
 }) {
-  const { lojas, stock, conta, transacoes, patrocinadores, metricas } = painel;
+  const { lojas, stock, conta, transacoes, patrocinadores, metricas, premios } = painel;
 
   const inject = useServerFn(injectarCredito);
   const sponsor = useServerFn(registarPatrocinio);
@@ -275,6 +283,8 @@ function Conteudo({
   const toggleMarca = useServerFn(alternarPatrocinador);
   const novaFilial = useServerFn(criarFilial);
   const mudarStock = useServerFn(atualizarStock);
+  const mudarPremio = useServerFn(definirItemPremio);
+  const novoItemStock = useServerFn(adicionarItemStock);
   const toggleFilial = useServerFn(alternarFilial);
 
   const maxCredito = useMemo(
@@ -291,6 +301,38 @@ function Conteudo({
   const [busca, setBusca] = useState("");
   const [novaFilialOpen, setNovaFilialOpen] = useState(false);
   const [stockLoja, setStockLoja] = useState<Supermercado | null>(null);
+  const [novoItem, setNovoItem] = useState<{ tipo: ItemPremio; qtd: string; valor: string }>({
+    tipo: "Lapis_de_Cor",
+    qtd: "10",
+    valor: "1000",
+  });
+
+  const itemDoTier = (tier: string) =>
+    premios.find((p) => p.tier === tier)?.tipo_item ?? "Kit_Bronze";
+
+  const exportarPdf = () => {
+    const porItem = new Map<string, number>();
+    for (const s of stock) {
+      porItem.set(s.tipo_item, (porItem.get(s.tipo_item) ?? 0) + Number(s.quantidade_disponivel));
+    }
+    gerarRelatorioImpacto({
+      totalAlunos: metricas.totalAlunos,
+      mediaLicoes: metricas.mediaLicoes,
+      totalLicoes: metricas.totalLicoes,
+      totalXp: metricas.totalXp,
+      porClasse: metricas.porClasse,
+      faturamentoMarcas: metricas.faturamentoMarcas,
+      retencaoSoftware: Number(conta?.retencao_lucro_software_10 ?? 0),
+      fundoDisponivel: Number(conta?.saldo_disponivel_distribuicao ?? 0),
+      totalArrecadado: Number(conta?.saldo_total_arrecadado ?? 0),
+      lojasActivas: lojas.filter((l) => l.ativo !== false).length,
+      totalStock: stock.reduce((a, s) => a + Number(s.quantidade_disponivel), 0),
+      stockPorItem: [...porItem.entries()]
+        .map(([item, quantidade]) => ({ item, quantidade }))
+        .sort((a, b) => b.quantidade - a.quantidade),
+      marcasActivas: patrocinadores.filter((p) => p.ativo).map((p) => p.nome_marca),
+    });
+  };
 
   // Formulário de marca patrocinadora
   const [marca, setMarca] = useState({
@@ -324,7 +366,7 @@ function Conteudo({
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <Kpi
           icon={<Coins className="h-5 w-5" />}
-          label="Faturamento do Software (10%)"
+          label="Faturamento do Software (15%)"
           value={kz(Number(conta?.retencao_lucro_software_10 ?? 0))}
           tone="bg-slate-900 text-white"
         />
@@ -340,6 +382,75 @@ function Conteudo({
           value={String(lojas.filter((l) => l.ativo !== false).length)}
           tone="bg-orange-500 text-white"
         />
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 font-display text-lg font-extrabold text-slate-900">
+              <FileDown className="h-5 w-5" /> Relatório de Impacto
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Documento corporativo com métricas de alunos, gráficos por classe, stock e
+              transparência financeira (85% distribuição / 15% software).
+            </p>
+          </div>
+          <button
+            onClick={exportarPdf}
+            className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white"
+          >
+            <FileDown className="h-4 w-4" /> Exportar Relatório de Impacto (PDF)
+          </button>
+        </div>
+      </section>
+
+      {/* ---------- ROTATIVIDADE DE PRÉMIOS ---------- */}
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 className="flex items-center gap-2 font-display text-lg font-extrabold text-slate-900">
+          <Trophy className="h-5 w-5" /> 🎁 Rotatividade dos Prémios
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Define que material físico corresponde a cada categoria. A alteração aparece de imediato
+          no app dos alunos e passa a ser o item descontado no balcão.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {TIERS.map((tier) => (
+            <div key={tier} className="rounded-xl border-2 border-slate-200 p-4">
+              <p className="font-display text-sm font-extrabold uppercase tracking-wider text-slate-900">
+                Kit {tier.toLowerCase()}
+              </p>
+              <select
+                value={itemDoTier(tier)}
+                disabled={busy}
+                onChange={(e) => {
+                  const tipoItem = e.target.value as ItemPremio;
+                  void run(
+                    () =>
+                      mudarPremio({
+                        data: {
+                          pin,
+                          tier,
+                          tipoItem,
+                          nomeVisivel: NOME_ITEM[tipoItem] ?? tipoItem.replace(/_/g, " "),
+                        },
+                      }),
+                    `Kit ${tier.toLowerCase()} passa a dar: ${NOME_ITEM[tipoItem] ?? tipoItem}.`,
+                  );
+                }}
+                className="mt-3 w-full rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-900"
+              >
+                {ITENS_DISPONIVEIS.map((it) => (
+                  <option key={it} value={it}>
+                    {NOME_ITEM[it] ?? it.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-400">
+                Visível para o aluno: {premios.find((p) => p.tier === tier)?.nome_visivel ?? "—"}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ---------- CAMPANHAS E PATROCINADORES ---------- */}
@@ -507,7 +618,7 @@ function Conteudo({
           <Banknote className="h-5 w-5" /> Registar Grande Patrocínio
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          10% ficam como retenção do software e 90% entram no fundo escolar de distribuição.
+          15% ficam como retenção do software e 85% entram no fundo escolar de distribuição.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <input
@@ -527,7 +638,7 @@ function Conteudo({
             onClick={() =>
               run(
                 () => sponsor({ data: { pin, origem: origem.trim(), valor: Number(patrocinio) } }),
-                "Patrocínio registado: 10% retidos, 90% para o fundo escolar.",
+                "Patrocínio registado: 15% retidos, 85% para o fundo escolar.",
               )
             }
             className="rounded-xl bg-slate-900 px-5 py-2 font-semibold text-white disabled:opacity-40"
@@ -891,6 +1002,58 @@ function Conteudo({
             {stockDaLoja(stockLoja.id).length === 0 && (
               <p className="text-sm text-slate-400">Esta filial ainda não tem prémios configurados.</p>
             )}
+
+            <div className="rounded-xl border-2 border-dashed border-slate-300 p-4">
+              <p className="font-display text-sm font-extrabold text-slate-900">
+                ➕ Adicionar novo tipo de material
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <select
+                  value={novoItem.tipo}
+                  onChange={(e) => setNovoItem({ ...novoItem, tipo: e.target.value as ItemPremio })}
+                  className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                >
+                  {ITENS_DISPONIVEIS.map((it) => (
+                    <option key={it} value={it}>
+                      {NOME_ITEM[it] ?? it.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={novoItem.qtd}
+                  onChange={(e) => setNovoItem({ ...novoItem, qtd: e.target.value.replace(/\D/g, "") })}
+                  placeholder="Quantidade"
+                  className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                />
+                <input
+                  value={novoItem.valor}
+                  onChange={(e) => setNovoItem({ ...novoItem, valor: e.target.value.replace(/\D/g, "") })}
+                  placeholder="Valor comercial (Kz)"
+                  className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                />
+              </div>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    () =>
+                      novoItemStock({
+                        data: {
+                          pin,
+                          supermercadoId: stockLoja.id,
+                          tipoItem: novoItem.tipo,
+                          quantidade: Number(novoItem.qtd || 0),
+                          valorComercialKz: Number(novoItem.valor || 0),
+                        },
+                      }),
+                    `${NOME_ITEM[novoItem.tipo] ?? novoItem.tipo} disponível nesta filial.`,
+                  )
+                }
+                className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+              >
+                Adicionar ao stock
+              </button>
+            </div>
           </div>
         </Modal>
       )}
