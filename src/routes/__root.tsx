@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { registarServiceWorker } from "../lib/pwa";
 
 function NotFoundComponent() {
   return (
@@ -137,6 +138,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Instalação nativa + funcionamento offline (apenas no site publicado).
+  useEffect(() => {
+    registarServiceWorker();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
