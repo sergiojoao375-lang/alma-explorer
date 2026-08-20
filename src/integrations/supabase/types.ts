@@ -37,34 +37,43 @@ export type Database = {
           classe: string | null
           created_at: string
           device_id: string
+          dia_referencia: string
           id: string
           licoes_concluidas: number
           moedas: number
           nome: string
           updated_at: string
           xp: number
+          xp_base_dia: number
+          xp_dia: number
         }
         Insert: {
           classe?: string | null
           created_at?: string
           device_id: string
+          dia_referencia?: string
           id?: string
           licoes_concluidas?: number
           moedas?: number
           nome: string
           updated_at?: string
           xp?: number
+          xp_base_dia?: number
+          xp_dia?: number
         }
         Update: {
           classe?: string | null
           created_at?: string
           device_id?: string
+          dia_referencia?: string
           id?: string
           licoes_concluidas?: number
           moedas?: number
           nome?: string
           updated_at?: string
           xp?: number
+          xp_base_dia?: number
+          xp_dia?: number
         }
         Relationships: []
       }
@@ -151,6 +160,53 @@ export type Database = {
           tipo_item?: string
         }
         Relationships: []
+      }
+      resgates_premios: {
+        Row: {
+          classe: string | null
+          codigo: string
+          criado_em: string
+          device_id: string
+          id: string
+          nome_aluno: string
+          nome_loja: string
+          premio_nome: string
+          supermercado_id: string | null
+          tier: string
+        }
+        Insert: {
+          classe?: string | null
+          codigo: string
+          criado_em?: string
+          device_id: string
+          id?: string
+          nome_aluno: string
+          nome_loja: string
+          premio_nome: string
+          supermercado_id?: string | null
+          tier: string
+        }
+        Update: {
+          classe?: string | null
+          codigo?: string
+          criado_em?: string
+          device_id?: string
+          id?: string
+          nome_aluno?: string
+          nome_loja?: string
+          premio_nome?: string
+          supermercado_id?: string | null
+          tier?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resgates_premios_supermercado_id_fkey"
+            columns: ["supermercado_id"]
+            isOneToOne: false
+            referencedRelation: "supermercados"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_premios: {
         Row: {
