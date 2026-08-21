@@ -175,6 +175,18 @@ export const sincronizarAluno = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const hoje = new Date().toISOString().slice(0, 10);
+    const { data: actual } = await supabaseAdmin
+      .from("alunos_estatisticas")
+      .select("xp, xp_base_dia, dia_referencia")
+      .eq("device_id", data.deviceId)
+      .maybeSingle();
+
+    // O ranking diário reinicia às 00:00: num novo dia a base passa a ser o XP actual.
+    const novoDia = !actual || actual.dia_referencia !== hoje;
+    const base = novoDia ? data.xp : Number(actual.xp_base_dia ?? 0);
+    const xpDia = Math.max(0, data.xp - base);
+
     await supabaseAdmin.from("alunos_estatisticas").upsert(
       {
         device_id: data.deviceId,
@@ -183,11 +195,94 @@ export const sincronizarAluno = createServerFn({ method: "POST" })
         licoes_concluidas: data.licoesConcluidas,
         xp: data.xp,
         moedas: data.moedas,
+        xp_base_dia: base,
+        xp_dia: xpDia,
+        dia_referencia: hoje,
       },
       { onConflict: "device_id" },
     );
     return { ok: true };
   });
+
+/** Lojas parceiras activas — o aluno escolhe onde levanta o material. */
+export const getLojasParceiras = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin
+    .from("supermercados")
+    .select("id, nome_rede, filial_local")
+    .eq("ativo", true)
+    .order("nome_rede");
+  return (data ?? []) as { id: string; nome_rede: string; filial_local: string }[];
+});
+
+/** Regista o prémio conquistado para aparecer no ranking diário. */
+export const registarResgate = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        deviceId: z.string().min(6).max(64),
+        nomeAluno: z.string().min(1).max(60),
+        classe: z.string().max(10).nullable(),
+        premioNome: z.string().min(1).max(80),
+        tier: z.string().min(1).max(20),
+        supermercadoId: z.string().uuid().nullable(),
+        nomeLoja: z.string().min(1).max(140),
+        codigo: z.string().min(1).max(80),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("resgates_premios").insert({
+      device_id: data.deviceId,
+      nome_aluno: data.nomeAluno,
+      classe: data.classe,
+      premio_nome: data.premioNome,
+      tier: data.tier,
+      supermercado_id: data.supermercadoId,
+      nome_loja: data.nomeLoja,
+      codigo: data.codigo,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** Ranking do dia: prémios ganhos hoje + top 5 alunos com mais pontos hoje. */
+export const getRankingDiario = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const hoje = new Date().toISOString().slice(0, 10);
+  const inicioDia = `${hoje}T00:00:00.000Z`;
+
+  const [resgates, top] = await Promise.all([
+    supabaseAdmin
+      .from("resgates_premios")
+      .select("nome_aluno, classe, premio_nome, tier, nome_loja, criado_em")
+      .gte("criado_em", inicioDia)
+      .order("criado_em", { ascending: false })
+      .limit(30),
+    supabaseAdmin
+      .from("alunos_estatisticas")
+      .select("nome, classe, xp_dia")
+      .eq("dia_referencia", hoje)
+      .gt("xp_dia", 0)
+      .order("xp_dia", { ascending: false })
+      .limit(5),
+  ]);
+
+  return {
+    dia: hoje,
+    premiados: (resgates.data ?? []) as {
+      nome_aluno: string;
+      classe: string | null;
+      premio_nome: string;
+      tier: string;
+      nome_loja: string;
+      criado_em: string;
+    }[],
+    topPontos: (top.data ?? []) as { nome: string; classe: string | null; xp_dia: number }[],
+  };
+});
+
 
 /** Cadastro de nova marca patrocinadora. */
 export const criarPatrocinador = createServerFn({ method: "POST" })
