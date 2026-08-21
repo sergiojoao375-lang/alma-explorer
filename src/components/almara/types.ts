@@ -7,7 +7,9 @@ export type Screen =
   | "mistakes"
   | "shop"
   | "arena"
-  | "prizes";
+  | "prizes"
+  | "ranking";
+
 
 export type Grade = "6ª" | "7ª" | "8ª" | "9ª" | "10ª";
 
