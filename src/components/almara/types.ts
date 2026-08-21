@@ -69,7 +69,11 @@ export interface Redemption {
   createdAt: string;
   expiresAt: string;
   used: boolean;
+  /** Filial escolhida para levantar o material (ex.: "Kero — Kilamba"). */
+  lojaNome?: string;
+  lojaId?: string | null;
 }
+
 
 export interface MistakeEntry {
   subjectId: string;
