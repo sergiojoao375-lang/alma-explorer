@@ -1,14 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, Gift, Lock, PartyPopper, ShieldCheck, Timer, Trophy, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Gift,
+  Lock,
+  MapPin,
+  PartyPopper,
+  ShieldCheck,
+  Store,
+  Timer,
+  Trophy,
+  X,
+} from "lucide-react";
 import { getMixedQuestions } from "./data";
-import { getPremiosConfig } from "@/lib/almara-backend.functions";
+import {
+  getLojasParceiras,
+  getPremiosConfig,
+  registarResgate,
+} from "@/lib/almara-backend.functions";
+import { confetes, somAcerto, somErro, somVitoria } from "@/lib/feedback";
 import {
   PRIZES,
   SEGUNDOS_POR_PERGUNTA,
   formatarCooldown,
   generateRedemption,
+  getDeviceId,
   isPrizeUnlocked,
   prizeProgressLabel,
   qrPayload,
@@ -17,6 +34,10 @@ import {
   type Prize,
 } from "./prizes";
 import type { AppState, QuizQuestion, Redemption } from "./types";
+
+type Loja = { id: string; nome_rede: string; filial_local: string };
+
+const nomeCompletoLoja = (l: Loja) => `${l.nome_rede} — ${l.filial_local}`;
 
 export function Prizes({
   state,
@@ -28,10 +49,14 @@ export function Prizes({
   onRedeem: (r: Redemption) => void;
 }) {
   const [challenge, setChallenge] = useState<Prize | null>(null);
+  const [escolherLoja, setEscolherLoja] = useState<Prize | null>(null);
   const [ticket, setTicket] = useState<Redemption | null>(null);
   const [itens, setItens] = useState<Record<string, string>>({});
+  const [lojas, setLojas] = useState<Loja[]>([]);
   const [agora, setAgora] = useState(() => Date.now());
   const carregarConfig = useServerFn(getPremiosConfig);
+  const carregarLojas = useServerFn(getLojasParceiras);
+  const guardarResgate = useServerFn(registarResgate);
 
   // Item físico atribuído a cada categoria esta semana (definido pelo administrador).
   useEffect(() => {
@@ -44,6 +69,11 @@ export function Prizes({
       } catch {
         // offline-first: mostra o item padrão
       }
+      try {
+        setLojas((await carregarLojas()) as Loja[]);
+      } catch {
+        // sem lista de filiais o aluno vê apenas a marca patrocinadora
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -54,8 +84,91 @@ export function Prizes({
     return () => clearInterval(t);
   }, []);
 
+  /** Filiais da rede que patrocina este prémio (ex.: Kero Kilamba, Kero Viana). */
+  const filiaisDoPatrocinador = (p: Prize) => {
+    const alvo = p.sponsor.toLowerCase();
+    const proprias = lojas.filter((l) => l.nome_rede.toLowerCase().includes(alvo));
+    return proprias.length > 0 ? proprias : lojas;
+  };
+
+  const concluirResgate = (prize: Prize, loja: Loja | null) => {
+    const r = generateRedemption(
+      prize,
+      loja ? { id: loja.id, nome: nomeCompletoLoja(loja) } : undefined,
+    );
+    onRedeem(r);
+    setTicket(r);
+    setEscolherLoja(null);
+    setChallenge(null);
+    confetes(true);
+    somVitoria();
+    void guardarResgate({
+      data: {
+        deviceId: getDeviceId().padEnd(6, "0"),
+        nomeAluno: state.name || "Estudante Almara",
+        classe: state.grade,
+        premioNome: prize.name,
+        tier: prize.tier,
+        supermercadoId: loja?.id ?? null,
+        nomeLoja: loja ? nomeCompletoLoja(loja) : `${prize.sponsor} — filial a indicar`,
+        codigo: r.code,
+      },
+    }).catch(() => undefined);
+  };
+
   if (ticket) {
     return <TicketScreen ticket={ticket} onBack={() => { setTicket(null); setChallenge(null); }} />;
+  }
+
+  if (escolherLoja) {
+    const opcoes = filiaisDoPatrocinador(escolherLoja);
+    return (
+      <div className="min-h-screen bg-background pb-12">
+        <header className="flex items-center gap-3 px-4 py-3">
+          <button
+            onClick={() => { setEscolherLoja(null); setChallenge(null); setAgora(Date.now()); }}
+            className="btn-press grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground"
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="font-display text-lg font-extrabold text-foreground">Escolhe a filial</h1>
+        </header>
+        <div className="px-5">
+          <p className="text-sm font-semibold text-muted-foreground">
+            Onde queres levantar o teu <strong>{escolherLoja.name}</strong>? O vale só é válido na
+            filial que escolheres.
+          </p>
+          <div className="mt-4 space-y-3">
+            {opcoes.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => concluirResgate(escolherLoja, l)}
+                className="card-3d btn-press flex w-full items-center gap-3 rounded-2xl border-2 border-border bg-card p-4 text-left"
+              >
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
+                  <Store className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-sm font-extrabold text-foreground">{l.nome_rede}</p>
+                  <p className="flex items-center gap-1 truncate text-[11px] font-semibold text-muted-foreground">
+                    <MapPin className="h-3 w-3" /> {l.filial_local}
+                  </p>
+                </div>
+              </button>
+            ))}
+            {opcoes.length === 0 && (
+              <button
+                onClick={() => concluirResgate(escolherLoja, null)}
+                className="btn-press w-full rounded-2xl bg-primary py-3 font-display text-sm font-extrabold text-primary-foreground"
+              >
+                Gerar vale sem filial definida
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (challenge) {
@@ -64,11 +177,7 @@ export function Prizes({
         prize={challenge}
         state={state}
         onCancel={() => { setAgora(Date.now()); setChallenge(null); }}
-        onPass={(prize) => {
-          const r = generateRedemption(prize);
-          onRedeem(r);
-          setTicket(r);
-        }}
+        onPass={(prize) => setEscolherLoja(prize)}
       />
     );
   }
@@ -99,6 +208,7 @@ export function Prizes({
           const already = state.redemptions?.find((r) => r.prizeId === p.id);
           const restante = already ? 0 : tempoRestanteCooldown(p.id);
           const emEspera = restante > 0;
+          const filiais = filiaisDoPatrocinador(p);
           void agora; // força recálculo a cada segundo
           return (
             <div
@@ -119,7 +229,24 @@ export function Prizes({
               <p className={`mt-3 text-[11px] font-bold uppercase tracking-wider ${unlocked ? "text-white/80" : "text-muted-foreground"}`}>
                 Patrocinado por {p.sponsor} · {p.requirement} · prova de {p.perguntas} perguntas
               </p>
-              <p className={`mt-1 text-xs font-semibold ${unlocked ? "text-white/85" : "text-muted-foreground"}`}>
+
+              {/* Filiais concretas onde este prémio pode ser levantado. */}
+              <div
+                className={`mt-2 rounded-2xl px-3 py-2 text-[11px] font-semibold ${
+                  unlocked ? "bg-white/15 text-white/90" : "bg-background/60 text-muted-foreground"
+                }`}
+              >
+                <span className="flex items-center gap-1 font-bold uppercase tracking-wider">
+                  <MapPin className="h-3 w-3" /> Levantamento em
+                </span>
+                <span className="mt-0.5 block">
+                  {filiais.length > 0
+                    ? filiais.map((l) => `${l.nome_rede} ${l.filial_local}`).join(" · ")
+                    : "Filiais parceiras a confirmar"}
+                </span>
+              </div>
+
+              <p className={`mt-2 text-xs font-semibold ${unlocked ? "text-white/85" : "text-muted-foreground"}`}>
                 {prizeProgressLabel(p, state)}
               </p>
 
@@ -193,6 +320,7 @@ function FinalChallenge({
       if (falta <= 0) {
         clearInterval(t);
         setExpirou(true); // tempo esgotado → pergunta conta como errada
+        somErro();
       }
     }, 250);
     return () => clearInterval(t);
@@ -232,7 +360,7 @@ function FinalChallenge({
           onClick={() => (passed ? onPass(prize) : onCancel())}
           className="btn-press mt-8 w-full rounded-2xl bg-primary py-4 font-display text-base font-extrabold text-primary-foreground"
         >
-          {passed ? "Gerar QR Code Seguro" : "Voltar aos prémios"}
+          {passed ? "Escolher filial e gerar QR Code" : "Voltar aos prémios"}
         </button>
       </div>
     );
@@ -285,7 +413,12 @@ function FinalChallenge({
                 disabled={revelar}
                 onClick={() => {
                   setPicked(idx);
-                  if (isRight) setCorrect((c) => c + 1);
+                  if (isRight) {
+                    setCorrect((c) => c + 1);
+                    somAcerto();
+                  } else {
+                    somErro();
+                  }
                 }}
                 className={`btn-press w-full rounded-2xl border-2 p-4 text-left font-semibold ${
                   revelar && isRight
@@ -336,8 +469,13 @@ function TicketScreen({ ticket, onBack }: { ticket: Redemption; onBack: () => vo
         <div className="card-3d rounded-3xl border-2 border-border bg-card p-6 text-center">
           <ShieldCheck className="mx-auto h-8 w-8 text-emerald-600" />
           <p className="mt-2 font-display text-xl font-extrabold text-foreground">{ticket.prizeName}</p>
-          <p className="text-sm font-semibold text-muted-foreground">
-            Mostra este código no balcão do supermercado parceiro.
+          {ticket.lojaNome && (
+            <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 font-display text-xs font-extrabold text-emerald-800">
+              <MapPin className="h-3 w-3" /> {ticket.lojaNome}
+            </p>
+          )}
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">
+            Mostra este código no balcão da filial indicada.
           </p>
           <div className="mx-auto mt-5 w-fit rounded-2xl bg-white p-4">
             <QRCodeSVG value={qrPayload(ticket)} size={196} level="M" />
