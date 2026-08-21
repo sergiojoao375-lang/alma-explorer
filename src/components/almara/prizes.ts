@@ -94,11 +94,14 @@ function checksum(input: string): string {
 }
 
 /** ALM-<LOJA>-<PRÉMIO>-<CHECKSUM> — assinado com a chave secreta Almara. */
-export function generateRedemption(prize: Prize): Redemption {
+export function generateRedemption(
+  prize: Prize,
+  loja?: { id: string; nome: string },
+): Redemption {
   const device = getDeviceId();
   const created = new Date();
   const expires = new Date(created.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const payload = `${device}|${prize.code}|${expires.toISOString().slice(0, 10)}|${SECRET}`;
+  const payload = `${device}|${prize.code}|${loja?.id ?? "SEM-LOJA"}|${expires.toISOString().slice(0, 10)}|${SECRET}`;
   const code = `ALM-${prize.sponsor.toUpperCase()}-${prize.code}-${checksum(payload)}`;
   return {
     code,
@@ -107,8 +110,11 @@ export function generateRedemption(prize: Prize): Redemption {
     createdAt: created.toISOString(),
     expiresAt: expires.toISOString(),
     used: false,
+    lojaNome: loja?.nome,
+    lojaId: loja?.id ?? null,
   };
 }
+
 
 /** String completa codificada no QR Code. */
 export function qrPayload(r: Redemption): string {
