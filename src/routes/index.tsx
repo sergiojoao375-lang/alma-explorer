@@ -242,8 +242,10 @@ function Index() {
           onOpenShop={() => setScreen("shop")}
           onOpenArena={() => setScreen("arena")}
           onOpenPrizes={() => setScreen("prizes")}
+          onOpenRanking={() => setScreen("ranking")}
         />
       )}
+      {screen === "ranking" && <Ranking onBack={() => setScreen("dashboard")} />}
       {screen === "prizes" && (
         <Prizes
           state={state}
