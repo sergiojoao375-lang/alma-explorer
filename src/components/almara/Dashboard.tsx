@@ -80,6 +80,21 @@ export function Dashboard({
           <Icons.ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
         </button>
         <button
+          onClick={onOpenRanking}
+          className="card-3d btn-press col-span-2 flex items-center gap-3 rounded-2xl border-2 border-border bg-card p-4 text-left"
+        >
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
+            <Icons.Trophy className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-sm font-extrabold text-foreground">Ranking do Dia 🏆</p>
+            <p className="truncate text-[11px] font-semibold text-muted-foreground">
+              Quem ganhou prémios hoje e o top 5 de pontos
+            </p>
+          </div>
+          <Icons.ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+        </button>
+        <button
           onClick={onOpenMistakes}
           className="card-3d btn-press flex items-center gap-3 rounded-2xl border-2 border-border bg-card p-4 text-left"
         >
