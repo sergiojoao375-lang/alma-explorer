@@ -11,6 +11,7 @@ export function Dashboard({
   onOpenShop,
   onOpenArena,
   onOpenPrizes,
+  onOpenRanking,
 }: {
   state: AppState;
   onOpenSubject: (id: string) => void;
@@ -19,6 +20,7 @@ export function Dashboard({
   onOpenShop: () => void;
   onOpenArena: () => void;
   onOpenPrizes: () => void;
+  onOpenRanking: () => void;
 }) {
   const grade: Grade = state.grade ?? "6ª";
   const available = SUBJECTS.filter((s) => isSubjectAvailable(s, grade));
