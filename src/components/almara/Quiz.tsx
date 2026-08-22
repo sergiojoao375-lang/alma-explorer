@@ -56,8 +56,10 @@ export function Quiz({
     setChecked(true);
     if (isCorrect) {
       setCorrectCount((c) => c + 1);
+      somAcerto();
     } else {
       setLives((l) => Math.max(0, l - 1));
+      somErro();
       onWrong?.(q);
     }
   };
