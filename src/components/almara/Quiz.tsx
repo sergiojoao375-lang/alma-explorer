@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Check, AlertTriangle, ArrowRight, Heart, Trophy, RotateCcw, Home } from "lucide-react";
 import { getQuestions } from "./data";
+import { confetes, somAcerto, somErro, somVitoria } from "@/lib/feedback";
 import type { Difficulty, QuizQuestion } from "./types";
 
 const INITIAL_LIVES = 5;
