@@ -331,6 +331,18 @@ function Conteudo({
         .map(([item, quantidade]) => ({ item, quantidade }))
         .sort((a, b) => b.quantidade - a.quantidade),
       marcasActivas: patrocinadores.filter((p) => p.ativo).map((p) => p.nome_marca),
+      empresas: patrocinadores.map((p) => ({
+        nome: p.nome_marca,
+        disciplina: DISCIPLINAS.find((x) => x.id === p.disciplina_alvo)?.nome ?? p.disciplina_alvo,
+        valor: Number(p.valor_patrocinio),
+        ativo: p.ativo,
+        pergunta: p.pergunta,
+      })),
+      filiais: lojas.map((l) => ({
+        rede: l.nome_rede,
+        local: l.filial_local,
+        ativo: l.ativo !== false,
+      })),
     });
   };
 
