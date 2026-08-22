@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ArrowLeft, Flame, Trophy, Target, Clock, Award, Lock, Zap, Star, BookOpen, Coins, Shield, Info, HeartHandshake, Gamepad2, Timer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Flame, Trophy, Target, Clock, Award, Lock, Zap, Star, BookOpen, Coins, Shield, Info, HeartHandshake, Gamepad2, Timer, Volume2, VolumeX } from "lucide-react";
+import { alternarSom, somAcerto, somActivo } from "@/lib/feedback";
 import type { AppState } from "./types";
 
 const ACHIEVEMENTS = [
@@ -13,6 +14,8 @@ const ACHIEVEMENTS = [
 
 export function Profile({ state, onBack }: { state: AppState; onBack: () => void }) {
   const [sobre, setSobre] = useState(false);
+  const [som, setSom] = useState(true);
+  useEffect(() => setSom(somActivo()), []);
   const initials = state.name
     .split(" ")
     .map((s) => s[0])
@@ -32,8 +35,20 @@ export function Profile({ state, onBack }: { state: AppState; onBack: () => void
         </button>
         <h1 className="font-display text-lg font-extrabold text-foreground">Perfil</h1>
         <button
+          onClick={() => {
+            const novo = !som;
+            setSom(novo);
+            alternarSom(novo);
+            if (novo) somAcerto();
+          }}
+          className="btn-press ml-auto grid h-9 w-9 place-items-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+          aria-label={som ? "Desligar som" : "Ligar som"}
+        >
+          {som ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+        </button>
+        <button
           onClick={() => setSobre(true)}
-          className="btn-press ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+          className="btn-press flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
         >
           <Info className="h-3.5 w-3.5" /> Sobre
         </button>

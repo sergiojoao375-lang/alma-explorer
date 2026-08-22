@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Check, AlertTriangle, ArrowRight, Heart, Trophy, RotateCcw, Home } from "lucide-react";
 import { getQuestions } from "./data";
+import { confetes, somAcerto, somErro, somVitoria } from "@/lib/feedback";
 import type { Difficulty, QuizQuestion } from "./types";
 
 const INITIAL_LIVES = 5;
@@ -55,8 +56,10 @@ export function Quiz({
     setChecked(true);
     if (isCorrect) {
       setCorrectCount((c) => c + 1);
+      somAcerto();
     } else {
       setLives((l) => Math.max(0, l - 1));
+      somErro();
       onWrong?.(q);
     }
   };
@@ -342,6 +345,11 @@ function LessonComplete({
   onContinue: () => void;
 }) {
   const xp = correct * 10;
+  // Festa de fim de lição: confetes + fanfarra.
+  useEffect(() => {
+    confetes(correct === total);
+    somVitoria();
+  }, [correct, total]);
   return (
     <div className="animate-fade-in relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[color-mix(in_oklab,var(--success)_18%,var(--background))] via-background to-background px-6">
       <div className="grid h-24 w-24 place-items-center rounded-full bg-[var(--success)] text-white shadow-xl">

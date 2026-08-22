@@ -9,6 +9,7 @@ import { Shop } from "@/components/almara/Shop";
 import { MistakesSession } from "@/components/almara/MistakesSession";
 import { Arena } from "@/components/almara/Arena";
 import { Prizes } from "@/components/almara/Prizes";
+import { Ranking } from "@/components/almara/Ranking";
 import { SUBJECTS, getQuestions } from "@/components/almara/data";
 import { perguntasPatrocinadas, type PatrocinadorAtivo } from "@/components/almara/sponsors";
 import { getPatrocinadoresAtivos, sincronizarAluno } from "@/lib/almara-backend.functions";
@@ -242,8 +243,10 @@ function Index() {
           onOpenShop={() => setScreen("shop")}
           onOpenArena={() => setScreen("arena")}
           onOpenPrizes={() => setScreen("prizes")}
+          onOpenRanking={() => setScreen("ranking")}
         />
       )}
+      {screen === "ranking" && <Ranking onBack={() => setScreen("dashboard")} />}
       {screen === "prizes" && (
         <Prizes
           state={state}
