@@ -14,6 +14,8 @@ const ACHIEVEMENTS = [
 
 export function Profile({ state, onBack }: { state: AppState; onBack: () => void }) {
   const [sobre, setSobre] = useState(false);
+  const [som, setSom] = useState(true);
+  useEffect(() => setSom(somActivo()), []);
   const initials = state.name
     .split(" ")
     .map((s) => s[0])
