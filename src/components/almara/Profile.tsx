@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ArrowLeft, Flame, Trophy, Target, Clock, Award, Lock, Zap, Star, BookOpen, Coins, Shield, Info, HeartHandshake, Gamepad2, Timer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Flame, Trophy, Target, Clock, Award, Lock, Zap, Star, BookOpen, Coins, Shield, Info, HeartHandshake, Gamepad2, Timer, Volume2, VolumeX } from "lucide-react";
+import { alternarSom, somAcerto, somActivo } from "@/lib/feedback";
 import type { AppState } from "./types";
 
 const ACHIEVEMENTS = [
