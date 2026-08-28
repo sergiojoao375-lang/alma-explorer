@@ -9,13 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as BalcaoSupermercadoRouteImport } from './routes/balcao-supermercado'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as BalcaoSupermercadoRouteImport } from './routes/balcao-supermercado'
 
-const BalcaoSupermercadoRoute = BalcaoSupermercadoRouteImport.update({
-  id: '/balcao-supermercado',
-  path: '/balcao-supermercado',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -23,9 +23,9 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const BalcaoSupermercadoRoute = BalcaoSupermercadoRouteImport.update({
+  id: '/balcao-supermercado',
+  path: '/balcao-supermercado',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -61,11 +61,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/balcao-supermercado': {
-      id: '/balcao-supermercado'
-      path: '/balcao-supermercado'
-      fullPath: '/balcao-supermercado'
-      preLoaderRoute: typeof BalcaoSupermercadoRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -75,11 +75,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/balcao-supermercado': {
+      id: '/balcao-supermercado'
+      path: '/balcao-supermercado'
+      fullPath: '/balcao-supermercado'
+      preLoaderRoute: typeof BalcaoSupermercadoRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
